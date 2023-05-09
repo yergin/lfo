@@ -14,53 +14,79 @@ public:
   {
     _frequency = freq;
     _phaseDelta = phaseDelta();
-    _frequencyRamp = 0;
     _rampSamples = 0;
   }
 
-  void rampFrequency(float freq, uint32_t samples)
+  void setPhaseOffset(float offset)
   {
+    _phaseOffset = offset;
+    _offset = phaseToSamples(offset);
+    _rampSamples = 0;
+  }
+
+  void ramp(float freq, float offset, float ms)
+  {
+    _frequency = freq;
+    _phaseOffset = offset;
+    uint32_t samples = static_cast<uint32_t>(msToSamples(ms) + 0.5);
     if (samples == 0)
     {
-      setFrequency(freq);
+      _phaseDelta = phaseDelta();
+      _offset = phaseToSamples(offset);
+      _rampSamples = 0;
       return;
     }
-    _frequency = freq;
     _frequencyRamp = (phaseDelta() - _phaseDelta) / samples;
+    _offsetRamp = (phaseToSamples(offset) - _offset) / samples;
     _rampSamples = samples;
   }
 
+  void resetPhase(float phase = 0) { _phase = phaseToSamples(phase); }
+
   float frequency() const { return _frequency; }
+  float phaseOffset() const { return _phaseOffset; }
 
   float sample() const
   {
-    return static_cast<float>(SineTable[(int)_phase]) * Scaler - 1;
+    return static_cast<float>(SineTable[(int)_phasePlusOffset]) * Scaler - 1;
   }
 
   float sampleIP() const
   {
-    int index1 = (int)_phase;
-    int index2 = (index1 + 1) % TableSize;
-    float alpha = _phase - index1;
-    return (static_cast<float>(SineTable[index1]) * (1 - alpha) + static_cast<float>(SineTable[index2]) * alpha) * Scaler - 1;
+    int phase0 = (int)_phasePlusOffset;
+    int phase1 = (phase0 + 1) % TableSize;
+    float alpha = _phasePlusOffset - phase0;
+    return (static_cast<float>(SineTable[phase0]) * (1 - alpha) + static_cast<float>(SineTable[phase1]) * alpha) * Scaler - 1;
   }
 
   void advance()
   {
     _phase += _phaseDelta;
+    _phasePlusOffset = _phase + _offset;
     if (_rampSamples > 0)
     {
       _phaseDelta += _frequencyRamp;
+      _offset += _offsetRamp;
       _rampSamples--;
     }
     while (_phase >= TableSize)
     {
       _phase -= TableSize;
     }
+    while (_phasePlusOffset >= TableSize)
+    {
+      _phasePlusOffset -= TableSize;
+    }
+    while (_phasePlusOffset < 0)
+    {
+      _phasePlusOffset += TableSize;
+    }
   }
   
 private:
   inline float phaseDelta() const { return _frequency * TableSize / _sampleRate; }
+  inline float phaseToSamples(float phase) const { return phase * TableSize; }
+  inline float msToSamples(float ms) const { return (ms * _sampleRate) / 1000; }
 
   static constexpr int BitDepth = 12;
   static constexpr float Scaler = 2.f / (1 << BitDepth);
@@ -80,10 +106,14 @@ private:
     0x112, 0xdf, 0xb1, 0x87, 0x64, 0x45, 0x2c, 0x19, 0xb, 0x2,
   };
 
-  uint32_t _sampleRate;
-  float _frequency = 440.0f;
-  uint32_t _rampSamples = 0;
-  float _phase = 0.0f;
-  float _phaseDelta;
+  uint32_t _sampleRate = 0;
+  float _frequency = 0;
+  float _phase = 0;
+  float _phasePlusOffset = 0;
+  float _phaseOffset = 0;
+  float _offset = 0;
+  float _phaseDelta = 0;
   float _frequencyRamp = 0;
+  float _offsetRamp = 0;
+  uint32_t _rampSamples = 0;
 };

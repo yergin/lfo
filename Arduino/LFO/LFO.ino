@@ -7,7 +7,7 @@ int pot1Control = 81;
 int pot2Control = 82;
 
 volatile int counter = 0;
-volatile float freq = 1;
+//volatile float freq = 1;
 
 void handleProgramChange(unsigned int channel, unsigned int program)
 {
@@ -83,6 +83,9 @@ void setup()
   pinMode(PinStatusLed, OUTPUT);
   digitalWrite(PinStatusLed, HIGH);
 
+  Lfo.setFrequency(0.1);
+  Lfo.ramp(10, 0, 20000);
+
   setupPwms();
   
   delay(200);
@@ -92,8 +95,6 @@ void setup()
   Display.clear();
   Display.drawString(0, 0, "MIDI Controller");
   Display.show();
-
-  Lfo.setFrequency(freq);
 }
 
 void TimerInterrupt()
@@ -161,7 +162,7 @@ void sendPot2Value()
   sendControlChange(channel, pot2Control, VibratoPot.value());
   float v = static_cast<float>(VibratoPot.value()) / 127;
   v = pow(2, v);
-  Lfo.rampFrequency(v * 880, 1000);
+  Lfo.ramp(v * 880, 0, 1000);
 }
 
 void loop()
