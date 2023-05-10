@@ -68,4 +68,4 @@ inline PotController TremoloPot(PinTremolo);
 inline PotController VibratoPot(PinVibrato);
 inline OledDisplay Display(PinDisplayScl, PinDisplaySda);
 inline MidiController midi;
-inline WaveTable Lfo(SampleRate, 1);
+inline WaveTable<9> Lfo(SampleRate, 1);

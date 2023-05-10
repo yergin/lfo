@@ -83,8 +83,10 @@ void setup()
   pinMode(PinStatusLed, OUTPUT);
   digitalWrite(PinStatusLed, HIGH);
 
-  Lfo.setFrequency(0.1);
-  Lfo.ramp(10, 0, 20000);
+  Lfo.setFrequency(1);
+  Lfo.setPhaseOffset(1, 0.33);
+  Lfo.setPhaseOffset(2, -0.33);
+  Lfo.rampFrequency(0.1, 20000);
 
   setupPwms();
   
@@ -101,20 +103,21 @@ void TimerInterrupt()
 {
   if (counter % DownSample == 0)
   {
-    int fixed = static_cast<int>((process() / 2 + 0.5) * (Resolution - 1));
-    int clamped = fixed < 0 ? 0 : (fixed >= Resolution ? Resolution - 1 : fixed);
-    for (int i = 0; i < PwmOutCount; i++)
+    Lfo.advance();
+    int n = 0;
+    for (; n <= (int)PwmOut::V3; n++)
     {
-      timer_set_compare(Pwms[i].timer, Pwms[i].channel, static_cast<uint16>(clamped));
+      int fixed = static_cast<int>((Lfo.sampleIP(n) / 2 + 0.5) * (Resolution - 1));
+      int clamped = fixed < 0 ? 0 : (fixed >= Resolution ? Resolution - 1 : fixed);
+      timer_set_compare(Pwms[n].timer, Pwms[n].channel, static_cast<uint16>(clamped));
     }
+    n = (int)PwmOut::Clean;
+    float clean = 1;
+    int fixed = static_cast<int>(clean * (Resolution - 1));
+    int clamped = fixed < 0 ? 0 : (fixed >= Resolution ? Resolution - 1 : fixed);
+    timer_set_compare(Pwms[n].timer, Pwms[n].channel, static_cast<uint16>(clamped));
   }
   counter++;
-}
-
-float process()
-{
-  Lfo.advance();
-  return Lfo.sampleIP();
 }
 
 String noteName(int pitch)
@@ -162,7 +165,7 @@ void sendPot2Value()
   sendControlChange(channel, pot2Control, VibratoPot.value());
   float v = static_cast<float>(VibratoPot.value()) / 127;
   v = pow(2, v);
-  Lfo.ramp(v * 880, 0, 1000);
+  Lfo.rampFrequency(v * 880, 1000);
 }
 
 void loop()
