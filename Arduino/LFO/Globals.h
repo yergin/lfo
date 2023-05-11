@@ -1,3 +1,12 @@
+/**
+ * @file Globals.h
+ * @author Gino Bollaert
+ * @brief Global variables and constants
+ * @details
+ * @date 2023-05-11
+ * @copyright Gino Bollaert. All rights reserved.
+ */
+
 #pragma once
 
 #include "PotController.h"
@@ -6,6 +15,14 @@
 #include "WaveTable.h"
 
 #define USB_SERIAL_LOGGING 1
+#define OLED_DISPLAY 1
+
+enum class MidiStatus
+{
+  Idle,
+  Receiving,
+  Sending,
+};
 
 enum class PwmOut
 {
@@ -31,18 +48,17 @@ struct Pwm
   timer_dev* timer;
 };
 
-inline Pwm Pwms[PwmOutCount] =
-{
-  {PA0, 0, nullptr},
-  {PA1, 0, nullptr},
-  {PA2, 0, nullptr},
-  {PA3, 0, nullptr},
-  {PA6, 0, nullptr},
-  {PA7, 0, nullptr},
-  {PA8, 0, nullptr},
-  {PA9, 0, nullptr},
-  {PA10, 0, nullptr},
-  {PB9, 0, nullptr},
+inline Pwm Pwms[PwmOutCount] = {
+    {PA0, 0, nullptr},
+    {PA1, 0, nullptr},
+    {PA2, 0, nullptr},
+    {PA3, 0, nullptr},
+    {PA6, 0, nullptr},
+    {PA7, 0, nullptr},
+    {PA8, 0, nullptr},
+    {PA9, 0, nullptr},
+    {PA10, 0, nullptr},
+    {PB9, 0, nullptr},
 };
 
 constexpr int PinEnvelope = PB0;
@@ -50,22 +66,31 @@ constexpr int PinRate = PB1;
 constexpr int PinTremolo = PA4;
 constexpr int PinVibrato = PA5;
 
+constexpr int PinMidiIn = B11;
+constexpr int PinMidiOut = B10;
+
 constexpr int PinDisplayScl = PB6;
 constexpr int PinDisplaySda = PB7;
 
 constexpr int PinStatusLed = PC13;
 
-constexpr uint16 Resolution = 4096;
+constexpr uint16 PwmBits = 12;
+constexpr uint16 PwmPrecision = 1 << PwmBits;
+constexpr uint16 PwmMax = PwmPrecision - 1;
 constexpr int DownSample = 35;
-constexpr float SampleRate = static_cast<float>(F_CPU) / Resolution / DownSample; // ~70kHz for 10-bit resolution without division
+constexpr float SampleRate = static_cast<float>(F_CPU) / PwmPrecision / DownSample;
 
 #if USB_SERIAL_LOGGING
 inline USBCompositeSerial CompositeSerial;
 #endif
 
-inline PotController RatePit(PinRate);
-inline PotController TremoloPot(PinTremolo);
-inline PotController VibratoPot(PinVibrato);
-inline OledDisplay Display(PinDisplayScl, PinDisplaySda);
-inline MidiController midi;
-inline WaveTable<9> Lfo(SampleRate, 1);
+// inline PotController RatePit(PinRate);
+// inline PotController TremoloPot(PinTremolo);
+// inline PotController VibratoPot(PinVibrato);
+#if OLED_DISPLAY
+inline OledDisplay display(PinDisplayScl, PinDisplaySda);
+#endif
+// inline MidiController midi;
+inline WaveTable<9> lfo(SampleRate, 1);
+inline MidiStatus midiIndicator = MidiStatus::Idle;
+inline uint32_t midiIndicatorChanged = 0;
