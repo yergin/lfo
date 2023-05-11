@@ -24,6 +24,26 @@ enum class MidiStatus
   Sending,
 };
 
+enum class MidiCC
+{
+  Rate = 1,
+  RampTime = 5,
+  Volume = 7,
+  Expression = 11,
+  VoiceMode = 70,
+  AutopanDirection = 91,
+  Tremolo = 92,
+  Vibrato = 93,
+  RotarySync = 94,
+  Dry = 95,
+};
+
+enum class VoiceMode : uint8_t
+{
+  Vibrato = 0,
+  Chorus = 1,
+};
+
 enum class PwmOut
 {
   L1 = 0,
@@ -35,11 +55,32 @@ enum class PwmOut
   V1,
   V2,
   V3,
-  Clean,
+  OscCount = V3,
+  Dry,
   Count
 };
 
+inline constexpr int OscCount = (int)PwmOut::OscCount;
 inline constexpr int PwmOutCount = (int)PwmOut::Count;
+
+struct State
+{
+  float rate = 0.5f;
+  uint32_t rampTimeMs = 3000;
+  uint32_t stereoDelta = 0x40000000;
+  uint32_t syncDelta = 0x0;
+  uint16_t tremoloDepth = 0xffff;
+  uint16_t vibratoDepth = 0xffff;
+  uint16_t volume = 0x8000;
+  uint16_t expression = 0xffff;
+  uint16_t dryLevel = 0x0;
+  VoiceMode voiceMode = VoiceMode::Vibrato;
+  uint32_t oscMul[OscCount];
+  uint32_t oscOffset[OscCount];
+};
+
+uint32_t PhaseOffset2 = 1431655765;
+uint32_t PhaseOffset3 = 2863311531;
 
 struct Pwm
 {
@@ -94,3 +135,4 @@ inline OledDisplay display(PinDisplayScl, PinDisplaySda);
 inline WaveTable<9> lfo(SampleRate, 1);
 inline MidiStatus midiIndicator = MidiStatus::Idle;
 inline uint32_t midiIndicatorChanged = 0;
+inline State state = {};

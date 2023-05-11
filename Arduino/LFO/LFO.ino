@@ -9,14 +9,13 @@
 
 #include "Globals.h"
 
-const char* kNotes[] = { "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B" };
+const char* kNotes[] = {"C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"};
 
 int channel = 0;
 int pot1Control = 81;
 int pot2Control = 82;
 
-volatile int counter = 0;
-//volatile float freq = 1;
+// volatile float freq = 1;
 
 void setMidiStatus(MidiStatus status)
 {
@@ -36,7 +35,7 @@ void updateMidiStatus()
 
 void handleProgramChange(unsigned int channel, unsigned int program)
 {
-  //setMidiStatus(kMidiReceiving);
+  // setMidiStatus(kMidiReceiving);
 #if USB_SERIAL_LOGGING
   String s = String() + "Received Program Change " + String(program) + " [Ch:" + String(channel + 1) + "]\n";
   CompositeSerial.write(s.c_str());
@@ -45,7 +44,7 @@ void handleProgramChange(unsigned int channel, unsigned int program)
 
 void handleSysExData(unsigned char data)
 {
-  //setMidiStatus(kMidiReceiving);
+  // setMidiStatus(kMidiReceiving);
 #if USB_SERIAL_LOGGING
   String s = String() + "Received SysEx byte: 0x" + String(data, 16) + "\n";
   CompositeSerial.write(s.c_str());
@@ -54,7 +53,7 @@ void handleSysExData(unsigned char data)
 
 void handleSysExEnd()
 {
-  //setMidiStatus(kMidiReceiving);
+  // setMidiStatus(kMidiReceiving);
 #if USB_SERIAL_LOGGING
   String s = String() + "End of SysEx\n";
   CompositeSerial.write(s.c_str());
@@ -89,7 +88,7 @@ void setupPwms()
     pinMode(Pwms[i].pin, PWM);
     Pwms[i].timer = PIN_MAP[Pwms[i].pin].timer_device;
     Pwms[i].channel = PIN_MAP[Pwms[i].pin].timer_channel;
-    
+
     timer_pause(Pwms[i].timer);
     timer_set_prescaler(Pwms[i].timer, 0);
     timer_set_reload(Pwms[i].timer, PwmPrecision);
@@ -103,6 +102,29 @@ void setupPwms()
   }
 }
 
+void initState()
+{
+  for (int n = 0; n < OscCount; n++)
+  {
+    state.oscMul[n] = 0x7fff;
+    state.oscOffset[n] = 0xffff - state.oscMul[n];
+  }
+}
+
+void applyState()
+{
+  lfo.setFrequency(state.rate);
+  lfo.setPhaseOffset(0, (int)PwmOut::V1);
+  lfo.setPhaseOffset(PhaseOffset2, (int)PwmOut::V2);
+  lfo.setPhaseOffset(PhaseOffset3, (int)PwmOut::V3);
+  lfo.setPhaseOffset(state.syncDelta - state.stereoDelta, (int)PwmOut::L1);
+  lfo.setPhaseOffset(state.syncDelta + state.stereoDelta, (int)PwmOut::R1);
+  lfo.setPhaseOffset(PhaseOffset2 + state.syncDelta - state.stereoDelta, (int)PwmOut::L2);
+  lfo.setPhaseOffset(PhaseOffset2 + state.syncDelta + state.stereoDelta, (int)PwmOut::R2);
+  lfo.setPhaseOffset(PhaseOffset3 + state.syncDelta - state.stereoDelta, (int)PwmOut::L3);
+  lfo.setPhaseOffset(PhaseOffset3 + state.syncDelta + state.stereoDelta, (int)PwmOut::R3);
+}
+
 void setup()
 {
   pinMode(PinStatusLed, OUTPUT);
@@ -110,13 +132,10 @@ void setup()
 
   Serial3.begin(31250);
 
-  lfo.setFrequency(1);
-  lfo.setPhaseOffset(1431655765, 1);
-  lfo.setPhaseOffset(2863311531, 2);
-  lfo.rampFrequency(0.1, 10000);
-
+  initState();
+  applyState();
   setupPwms();
-  
+
   delay(200);
   setupUsb();
 
@@ -130,24 +149,23 @@ void setup()
 
 void TimerInterrupt()
 {
+  static int counter = 0;
   if (counter % DownSample == 0)
   {
     lfo.advance();
     int n = 0;
     for (; n <= (int)PwmOut::V3; n++)
     {
-      timer_set_compare(Pwms[n].timer, Pwms[n].channel, lfo.sampleIP(n) >> (16 - PwmBits));
+      auto v = ((lfo.sampleIP(n) * state.oscMul[n]) >> 16) + state.oscOffset[n];
+      timer_set_compare(Pwms[n].timer, Pwms[n].channel, v >> (16 - PwmBits));
     }
-    n = (int)PwmOut::Clean;
-    timer_set_compare(Pwms[n].timer, Pwms[n].channel, PwmMax);
+    n = (int)PwmOut::Dry;
+    timer_set_compare(Pwms[n].timer, Pwms[n].channel, state.dryLevel >> (16 - PwmBits));
   }
   counter++;
 }
 
-String noteName(int pitch)
-{
-  return String() + kNotes[pitch % 12] + String(pitch / 12 - 1);
-}
+String noteName(int pitch) { return String() + kNotes[pitch % 12] + String(pitch / 12 - 1); }
 
 void sendNoteOn(int chan, int pitch, int vel)
 {
@@ -185,7 +203,7 @@ void sendControlChange(int chan, int ctl, int val)
 
 void sendPot1Value()
 {
-  //sendControlChange(channel, pot1Control, TremoloPot.value());
+  // sendControlChange(channel, pot1Control, TremoloPot.value());
 }
 
 /*
@@ -238,7 +256,7 @@ void loop()
   /*
   if (TremoloPot.update()) {
     sendPot1Value();
-  }  
+  }
   if (VibratoPot.update()) {
     sendPot2Value();
   }
