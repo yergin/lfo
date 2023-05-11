@@ -64,7 +64,7 @@ void setupUsb()
 {
   USBComposite.clear();
   USBComposite.setManufacturerString("Tranzistor Bandicoot");
-  USBComposite.setProductString("LFO");
+  USBComposite.setProductString("Chorus FX");
   USBComposite.setVendorId(0xc007);
   USBComposite.setProductId(0x1f0c);
 #if USB_SERIAL_LOGGING
@@ -216,41 +216,53 @@ void sendPot2Value()
 }
 */
 
-void receiveSerial()
+void handleControlValue(MidiCC cc, int val)
 {
-  setMidiStatus(MidiStatus::Receiving);
 #if OLED_DISPLAY
   String oledStr;
+  oledStr += "CC:" + String((int)cc) + " Val:" + String(val);
   display.clear();
-  display.drawString(0, 0, "Received MIDI");
-#endif
-  while (Serial3.available())
-  {
-    setMidiStatus(MidiStatus::Receiving);
-    auto byte = Serial3.read();
-
-#if OLED_DISPLAY
-    oledStr += String(byte, 16) + " ";
-#endif
-#if USB_SERIAL_LOGGING
-    {
-      String s = String() + "Received byte: 0x" + String(byte, 16) + "\n";
-      CompositeSerial.write(s.c_str());
-    }
-#endif
-    delay(1);
-  }
-#if OLED_DISPLAY
+  display.drawString(0, 0, "Received MIDI:");
   display.drawString(0, 16, oledStr.c_str());
   display.show();
 #endif
 }
 
+void receiveMidiByte(int byte)
+{
+  static bool expectCC = false;
+  static bool expectValue = false;
+  static MidiCC cc;
+
+  if (byte & 0x80)
+  {
+    expectCC = ((byte & 0xf0) == 0xb0);
+    expectValue = false;
+    return;
+  }
+
+  if (expectCC)
+  {
+    setMidiStatus(MidiStatus::Receiving);
+    cc = (MidiCC)byte;
+    expectCC = false;
+    expectValue = true;
+    return;
+  }
+
+  if (expectValue)
+  {
+    handleControlValue(cc, byte);
+    expectValue = false;
+    expectCC = true;
+  }
+}
+
 void loop()
 {
-  if (Serial3.available())
+  while (Serial3.available())
   {
-    receiveSerial();
+    receiveMidiByte(Serial3.read());
   }
   updateMidiStatus();
   /*

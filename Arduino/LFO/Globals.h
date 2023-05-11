@@ -24,7 +24,7 @@ enum class MidiStatus
   Sending,
 };
 
-enum class MidiCC
+enum class MidiCC : uint8_t
 {
   Rate = 1,
   RampTime = 5,
