@@ -12,7 +12,7 @@ MIDI CC messages
 | 92 | Tremolo | 0-127 | Tremolo / auto-pan depth |
 | 93 | Chorus | 0-127 | Vibrato / chorus depth |
 | 94 | Detune | 0-127 | Rotary phase sync |
-| 95 | Phaser | 0-127 | Dry level |
+| 95 | Phaser | 0-127 | Phaser |
 
 Compressor control
 ------------------

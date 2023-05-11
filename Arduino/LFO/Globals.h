@@ -34,8 +34,8 @@ enum class MidiCC : uint8_t
   AutopanDirection = 91,
   Tremolo = 92,
   Vibrato = 93,
-  RotarySync = 94,
-  Dry = 95,
+  RotaryPhase = 94,
+  DryLevel = 95,
 };
 
 enum class VoiceMode : uint8_t
@@ -69,12 +69,14 @@ struct State
   uint32_t rampTimeMs = 3000;
   uint32_t stereoDelta = 0x40000000;
   uint32_t syncDelta = 0x0;
-  uint16_t tremoloDepth = 0xffff;
-  uint16_t vibratoDepth = 0xffff;
-  uint16_t volume = 0x8000;
+  uint16_t tremoloDepth = 0x7fff;
+  uint16_t vibratoDepth = 0x7fff;
+  uint16_t volume = 0x7fff;
   uint16_t expression = 0xffff;
   uint16_t dryLevel = 0x0;
+  uint16_t dryMul = 0x0;
   VoiceMode voiceMode = VoiceMode::Vibrato;
+  bool bypass = false;
   uint32_t oscMul[OscCount];
   uint32_t oscOffset[OscCount];
 };
@@ -106,6 +108,9 @@ constexpr int PinEnvelope = PB0;
 constexpr int PinRate = PB1;
 constexpr int PinTremolo = PA4;
 constexpr int PinVibrato = PA5;
+
+constexpr int PinVoice = PC15;
+constexpr int PinBypass = PC14;
 
 constexpr int PinMidiIn = B11;
 constexpr int PinMidiOut = B10;
