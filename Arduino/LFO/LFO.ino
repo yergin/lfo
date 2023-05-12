@@ -33,9 +33,19 @@ void updateMidiStatus()
   digitalWrite(PinStatusLed, midiIndicator == MidiStatus::Idle ? HIGH : LOW);
 }
 
+void handleControlChange(unsigned int channel, unsigned int controller, unsigned int value)
+{
+  if (channel != 0)
+  {
+    return;
+  }
+  setMidiStatus(MidiStatus::Receiving);
+  handleControlValue((MidiCC)controller, value);
+}
+
 void handleProgramChange(unsigned int channel, unsigned int program)
 {
-  // setMidiStatus(kMidiReceiving);
+  setMidiStatus(MidiStatus::Receiving);
 #if USB_SERIAL_LOGGING
   String s = String() + "Received Program Change " + String(program) + " [Ch:" + String(channel + 1) + "]\n";
   CompositeSerial.write(s.c_str());
@@ -44,7 +54,7 @@ void handleProgramChange(unsigned int channel, unsigned int program)
 
 void handleSysExData(unsigned char data)
 {
-  // setMidiStatus(kMidiReceiving);
+  setMidiStatus(MidiStatus::Receiving);
 #if USB_SERIAL_LOGGING
   String s = String() + "Received SysEx byte: 0x" + String(data, 16) + "\n";
   CompositeSerial.write(s.c_str());
@@ -53,7 +63,7 @@ void handleSysExData(unsigned char data)
 
 void handleSysExEnd()
 {
-  // setMidiStatus(kMidiReceiving);
+  setMidiStatus(MidiStatus::Receiving);
 #if USB_SERIAL_LOGGING
   String s = String() + "End of SysEx\n";
   CompositeSerial.write(s.c_str());
@@ -71,6 +81,7 @@ void setupUsb()
   CompositeSerial.registerComponent();
 #else
   midi.registerComponent();
+  midi.setControlChangeCallback(handleControlChange);
   midi.setProgramChangeCallback(handleProgramChange);
   midi.setSysExCallbacks(handleSysExData, handleSysExEnd);
 #endif
@@ -123,17 +134,17 @@ void updateVibratoDepth()
 
 void updateLevelsAndTremoloDepth()
 {
-  int v = (state.volume * state.expression) >> 16;
+  uint32_t v = (state.volume * state.expression) >> 16;
   for (int n = (int)PwmOut::L1; n < (int)PwmOut::R3; n++)
   {
     state.oscMul[n] = (state.tremoloDepth * v) >> 16;
-    state.oscOffset[n] = v - state.oscMul[n];
+    state.oscOffset[n] = (v - state.oscMul[n]) >> 1;
   }
 }
 
 void updateDryLevel()
 {
-  int v = (state.volume * state.expression) >> 16;
+  uint32_t v = (state.volume * state.expression) >> 16;
   state.dryMul = (v * state.dryLevel) >> 16;
 }
 
@@ -152,23 +163,33 @@ void updateLfoPhases()
   lfo.rampPhaseOffset(PhaseOffset3 + state.syncDelta + state.stereoDelta, state.rampTimeMs, (int)PwmOut::R3);
 }
 
+void updateRampTime()
+{
+  updateLfoRate();
+  updateLfoPhases();
+}
+
 void initState()
 {
   updateBypass();
-  updateVoiceMode();
-  updateVibratoDepth();
-  updateLevelsAndTremoloDepth();
-  updateDryLevel();
-  lfo.setFrequency(state.rate);
+  handleControlValue(MidiCC::Rate, 24);
+  handleControlValue(MidiCC::RampTime, 75);
+  handleControlValue(MidiCC::Volume, 100);
+  handleControlValue(MidiCC::Expression, 100);
+  handleControlValue(MidiCC::VoiceMode, 0);
+  handleControlValue(MidiCC::AutopanWidth, 32);
+  handleControlValue(MidiCC::Tremolo, 127);
+  handleControlValue(MidiCC::Vibrato, 127);
+  handleControlValue(MidiCC::RotaryPhase, 0);
+  handleControlValue(MidiCC::Phaser, 0);
   lfo.setPhaseOffset(0, (int)PwmOut::V1);
   lfo.setPhaseOffset(PhaseOffset2, (int)PwmOut::V2);
   lfo.setPhaseOffset(PhaseOffset3, (int)PwmOut::V3);
-  lfo.setPhaseOffset(state.syncDelta - state.stereoDelta, (int)PwmOut::L1);
-  lfo.setPhaseOffset(state.syncDelta + state.stereoDelta, (int)PwmOut::R1);
-  lfo.setPhaseOffset(PhaseOffset2 + state.syncDelta - state.stereoDelta, (int)PwmOut::L2);
-  lfo.setPhaseOffset(PhaseOffset2 + state.syncDelta + state.stereoDelta, (int)PwmOut::R2);
-  lfo.setPhaseOffset(PhaseOffset3 + state.syncDelta - state.stereoDelta, (int)PwmOut::L3);
-  lfo.setPhaseOffset(PhaseOffset3 + state.syncDelta + state.stereoDelta, (int)PwmOut::R3);
+  lfo.setFrequency(lfo.frequency());
+  for (int n = 0; n < OscCount; n++)
+  {
+    lfo.setPhaseOffset(lfo.phaseOffset(n), n);
+  }
 }
 
 void setup()
@@ -190,6 +211,7 @@ void setup()
   display.clear();
   display.drawString(0, 0, "MIDI Controller");
   display.show();
+  displayRealtimeChanges = true;
 #endif
 }
 
@@ -213,6 +235,7 @@ void TimerInterrupt()
 
 String noteName(int pitch) { return String() + kNotes[pitch % 12] + String(pitch / 12 - 1); }
 
+/*
 void sendNoteOn(int chan, int pitch, int vel)
 {
 #if not USB_SERIAL_LOGGING
@@ -252,7 +275,6 @@ void sendPot1Value()
   // sendControlChange(channel, pot1Control, TremoloPot.value());
 }
 
-/*
 void sendPot2Value()
 {
   sendControlChange(channel, pot2Control, VibratoPot.value());
@@ -264,10 +286,14 @@ void sendPot2Value()
 
 void setRate(int val)
 {
-  float rate = 0.7f + val * (2.5f - 0.7f) / 127;
-  state.rate = rate * rate;
+  float rate = val * 3.f / 127;
+  state.rate = rate + rate * rate * rate;
   updateLfoRate();
 #if OLED_DISPLAY
+  if (!displayRealtimeChanges)
+  {
+    return;
+  }
   String oledStr;
   oledStr += String((int)(state.rate * 60)) + " rpm";
   display.clear();
@@ -279,8 +305,13 @@ void setRate(int val)
 
 void setRampTime(int val)
 {
-  state.rampTimeMs = val * 5000 / 127;
+  state.rampTimeMs = ((1001 * val) >> 7) + ((4071 * val * val) >> 14);
+  updateRampTime();
 #if OLED_DISPLAY
+  if (!displayRealtimeChanges)
+  {
+    return;
+  }
   String oledStr;
   oledStr += String(state.rampTimeMs) + " ms";
   display.clear();
@@ -290,12 +321,21 @@ void setRampTime(int val)
 #endif
 }
 
+uint16_t volume(int val)
+{
+  return ((val * val) << 1) + val * 262;
+}
+
 void setVolume(int val)
 {
-  state.volume = (val << 9) + (val << 2);
+  state.volume = volume(val);
   updateLevelsAndTremoloDepth();
   updateDryLevel();
 #if OLED_DISPLAY
+  if (!displayRealtimeChanges)
+  {
+    return;
+  }
   String oledStr;
   oledStr += String(val);
   display.clear();
@@ -307,10 +347,14 @@ void setVolume(int val)
 
 void setExpression(int val)
 {
-  state.expression = (val << 9) + (val << 2);
+  state.expression = volume(val);
   updateLevelsAndTremoloDepth();
   updateDryLevel();
 #if OLED_DISPLAY
+  if (!displayRealtimeChanges)
+  {
+    return;
+  }
   String oledStr;
   oledStr += String(val);
   display.clear();
@@ -325,6 +369,10 @@ void setVoiceMode(int val)
   state.voiceMode = val == 0 ? VoiceMode::Vibrato : VoiceMode::Chorus;
   updateVoiceMode();
 #if OLED_DISPLAY
+  if (!displayRealtimeChanges)
+  {
+    return;
+  }
   display.clear();
   display.drawString(0, 0, "Mode:");
   display.drawString(0, 16, state.voiceMode == VoiceMode::Vibrato ? "Vibrato" : "Chorus");
@@ -332,12 +380,16 @@ void setVoiceMode(int val)
 #endif
 }
 
-void setAutopanDirection(int val)
+void setAutopanWidth(int val)
 {
   state.stereoDelta = val * 0x8000 / 128;
   state.stereoDelta = state.stereoDelta << 16 + state.stereoDelta;
   updateLfoPhases();
 #if OLED_DISPLAY
+  if (!displayRealtimeChanges)
+  {
+    return;
+  }
   String oledStr;
   int p = val * 200 / 128;
   oledStr += String(p > 100 ? p - 200 : p) + "%";
@@ -354,6 +406,10 @@ void setRotaryPhase(int val)
   state.syncDelta = state.syncDelta << 16 + state.syncDelta;
   updateLfoPhases();
 #if OLED_DISPLAY
+  if (!displayRealtimeChanges)
+  {
+    return;
+  }
   String oledStr;
   int p = val * 200 / 128;
   oledStr += String(p > 100 ? p - 200 : p) + "%";
@@ -369,6 +425,10 @@ void setTremolo(int val)
   state.tremoloDepth = (val << 9) + (val << 2);
   updateLevelsAndTremoloDepth();
 #if OLED_DISPLAY
+  if (!displayRealtimeChanges)
+  {
+    return;
+  }
   String oledStr;
   oledStr += String(val * 100 / 127) + "%";
   display.clear();
@@ -383,6 +443,10 @@ void setVibrato(int val)
   state.vibratoDepth = (val << 9) + (val << 2);
   updateVibratoDepth();
 #if OLED_DISPLAY
+  if (!displayRealtimeChanges)
+  {
+    return;
+  }
   String oledStr;
   oledStr += String(val * 100 / 127) + "%";
   display.clear();
@@ -392,13 +456,17 @@ void setVibrato(int val)
 #endif
 }
 
-void setDryLevel(int val)
+void setPhaser(int val)
 {
   state.dryLevel = (val << 9) + (val << 2);
   updateDryLevel();
 #if OLED_DISPLAY
+  if (!displayRealtimeChanges)
+  {
+    return;
+  }
   String oledStr;
-  oledStr += String(val);
+  oledStr += String(val * 100 / 127) + "%";
   display.clear();
   display.drawString(0, 0, "Phaser:");
   display.drawString(0, 16, oledStr.c_str());
@@ -415,11 +483,11 @@ void handleControlValue(MidiCC cc, int val)
     case MidiCC::Volume: setVolume(val); break;
     case MidiCC::Expression: setExpression(val); break;
     case MidiCC::VoiceMode: setVoiceMode(val); break;
-    case MidiCC::AutopanDirection: setAutopanDirection(val); break;
+    case MidiCC::AutopanWidth: setAutopanWidth(val); break;
     case MidiCC::Tremolo: setTremolo(val); break;
     case MidiCC::Vibrato: setVibrato(val); break;
     case MidiCC::RotaryPhase: setRotaryPhase(val); break;
-    case MidiCC::DryLevel: setDryLevel(val); break;
+    case MidiCC::Phaser: setPhaser(val); break;
   }
 }
 
@@ -459,6 +527,7 @@ void loop()
   {
     receiveMidiByte(Serial3.read());
   }
+  midi.poll();
   updateMidiStatus();
   /*
   if (TremoloPot.update()) {

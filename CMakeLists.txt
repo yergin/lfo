@@ -18,6 +18,10 @@ add_executable(gen-sine
     tools/gen_sine.cpp
 )
 
+add_executable(curves
+    tools/curves.cpp
+)
+
 if(CMAKE_PROJECT_NAME STREQUAL PROJECT_NAME)
     if (CMAKE_VERSION VERSION_GREATER_EQUAL "3.24.0")
         cmake_policy(SET CMP0135 NEW)

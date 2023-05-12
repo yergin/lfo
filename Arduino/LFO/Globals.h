@@ -14,7 +14,7 @@
 #include "MidiController.h"
 #include "WaveTable.h"
 
-#define USB_SERIAL_LOGGING 1
+#define USB_SERIAL_LOGGING 0
 #define OLED_DISPLAY 1
 
 enum class MidiStatus
@@ -31,11 +31,11 @@ enum class MidiCC : uint8_t
   Volume = 7,
   Expression = 11,
   VoiceMode = 70,
-  AutopanDirection = 91,
+  AutopanWidth = 91,
   Tremolo = 92,
   Vibrato = 93,
   RotaryPhase = 94,
-  DryLevel = 95,
+  Phaser = 95,
 };
 
 enum class VoiceMode : uint8_t
@@ -65,16 +65,16 @@ inline constexpr int PwmOutCount = (int)PwmOut::Count;
 
 struct State
 {
-  float rate = 0.5f;
-  uint32_t rampTimeMs = 3000;
-  uint32_t stereoDelta = 0x40000000;
-  uint32_t syncDelta = 0x0;
-  uint16_t tremoloDepth = 0x7fff;
-  uint16_t vibratoDepth = 0x7fff;
-  uint16_t volume = 0x7fff;
-  uint16_t expression = 0xffff;
-  uint16_t dryLevel = 0x0;
-  uint16_t dryMul = 0x0;
+  float rate = 0;
+  uint32_t rampTimeMs = 0;
+  uint32_t stereoDelta = 0;
+  uint32_t syncDelta = 0;
+  uint16_t tremoloDepth = 0;
+  uint16_t vibratoDepth = 0;
+  uint32_t volume = 0xffff;
+  uint32_t expression = 0xffff;
+  uint32_t dryLevel = 0x0;
+  uint32_t dryMul = 0x0;
   VoiceMode voiceMode = VoiceMode::Vibrato;
   bool bypass = false;
   uint32_t oscMul[OscCount];
@@ -128,6 +128,8 @@ constexpr float SampleRate = static_cast<float>(F_CPU) / PwmPrecision / DownSamp
 
 #if USB_SERIAL_LOGGING
 inline USBCompositeSerial CompositeSerial;
+#else
+inline MidiController midi;
 #endif
 
 // inline PotController RatePit(PinRate);
@@ -136,8 +138,8 @@ inline USBCompositeSerial CompositeSerial;
 #if OLED_DISPLAY
 inline OledDisplay display(PinDisplayScl, PinDisplaySda);
 #endif
-// inline MidiController midi;
 inline WaveTable<9> lfo(SampleRate, 1);
 inline MidiStatus midiIndicator = MidiStatus::Idle;
 inline uint32_t midiIndicatorChanged = 0;
 inline State state = {};
+inline bool displayRealtimeChanges = false;
